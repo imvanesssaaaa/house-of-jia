@@ -1734,16 +1734,56 @@ app.post(
   },
 )
 
-app.use((error, _req, res, _next) => {
-  console.error('Unhandled API error:', error.message)
-  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'The image must be within the upload size limit (15 MB for the downloadable PNG; 5 MB for standard photos).' })
+// Allowed frontend origins for production, previews, and local development.
+const configuredFrontendOrigins = [
+  process.env.FRONTEND_URL,
+  ...(process.env.FRONTEND_URLS || '').split(','),
+  'https://house-of-jia.vercel.app',
+  'http://localhost:5173',
+]
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+
+function isAllowedFrontendOrigin(origin) {
+  // Requests such as direct health checks may have no Origin header.
+  if (!origin) return true
+
+  const normalizedOrigin = origin.replace(/\/+$/, '')
+
+  // Accept explicitly configured website origins.
+  if (configuredFrontendOrigins.includes(normalizedOrigin)) {
+    return true
   }
-  if (error instanceof multer.MulterError || error.message === 'Only JPG, PNG, and WebP images are allowed.' || error.message === 'The downloadable product file must be a PNG with a transparent background.') {
-    return res.status(400).json({ error: error.message })
+
+  // Accept deployments belonging to the House of Jiæzélle Vercel projects.
+  try {
+    const parsed = new URL(normalizedOrigin)
+    const hostname = parsed.hostname.toLowerCase()
+
+    return (
+      parsed.protocol === 'https:' &&
+      (
+        /^house-of-jia(?:-[a-z0-9-]+)?\.vercel\.app$/.test(hostname) ||
+        /^houseofjiaezelle(?:-[a-z0-9-]+)?\.vercel\.app$/.test(hostname)
+      )
+    )
+  } catch {
+    return false
   }
-  res.status(500).json({ error: 'An unexpected server error occurred.' })
-})
+}
+
+app.use(cors({
+  origin(origin, callback) {
+    if (isAllowedFrontendOrigin(origin)) {
+      return callback(null, true)
+    }
+
+    console.warn('CORS blocked frontend origin:', origin)
+    return callback(new Error('Origin not allowed by CORS'))
+  },
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}))
 
 const server = app.listen(PORT, () => {
   console.log(`House of Jiæzélle API running on http://localhost:${PORT}`)
