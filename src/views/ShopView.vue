@@ -5,6 +5,7 @@ type Product = {
   id: string | number
   name: string
   category: string
+  collection_name?: string | null
   description: string
   price: string | number
   image_url?: string | null
@@ -15,8 +16,7 @@ type Product = {
   created_at?: string
 }
 
-const API_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 const products = ref<Product[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -34,6 +34,26 @@ const categories = computed(() => [
 const filteredProducts = computed(() => {
   if (activeCategory.value === 'ALL') return products.value
   return products.value.filter((product) => product.category?.toUpperCase() === activeCategory.value.toUpperCase())
+})
+
+// Group the current filtered products into curated collection sections.
+// Collection names are case-insensitive for grouping but preserve the first display spelling.
+const groupedCollections = computed(() => {
+  const grouped = new Map<string, { name: string; products: Product[] }>()
+
+  for (const product of filteredProducts.value) {
+    const rawName = product.collection_name?.trim() || 'General Collection'
+    const key = rawName.toLocaleLowerCase('en')
+    const current = grouped.get(key)
+
+    if (current) {
+      current.products.push(product)
+    } else {
+      grouped.set(key, { name: rawName, products: [product] })
+    }
+  }
+
+  return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))
 })
 
 function imagesFor(product: Product): string[] {
@@ -145,34 +165,53 @@ onMounted(loadProducts)
       </div>
       <p v-else-if="!filteredProducts.length" class="shop-state">The collection is being curated. Published products from the House will appear here.</p>
 
-      <div v-else class="product-grid">
-        <article v-for="product in filteredProducts" :key="product.id" class="product-card">
-          <div class="product-image-frame">
-            <img v-if="selectedImage(product)" class="product-main-image" :src="selectedImage(product)" :alt="`${product.name} preview`" loading="lazy" />
-            <div v-else class="image-placeholder"><span>J.</span><small>PNG DOWNLOAD</small></div>
-            <span class="file-ribbon">PNG DIGITAL FILE</span>
-          </div>
-
-          <div v-if="imagesFor(product).length > 1" class="product-thumbnails" aria-label="Product preview photos">
-            <button v-for="(image, index) in imagesFor(product)" :key="`${product.id}-${image}`" type="button" :class="{ selected: selectedImage(product) === image }" :aria-label="`Show ${product.name} preview ${index + 1}`" @click="selectImage(product, image)">
-              <img :src="image" :alt="`${product.name} preview ${index + 1}`" loading="lazy" />
-            </button>
-          </div>
-
-          <div class="product-info">
-            <div class="product-category">{{ product.category }}</div>
-            <h3>{{ product.name }}</h3>
-            <p v-if="product.description">{{ product.description }}</p>
-            <div class="product-card-bottom">
-              <strong>{{ formatPrice(product.price) }}</strong>
-              <span>{{ product.has_download_png ? 'PNG AVAILABLE' : 'COMING SOON' }}</span>
+      <div v-else class="collection-list">
+        <section
+          v-for="collection in groupedCollections"
+          :key="collection.name"
+          class="collection-section"
+          :aria-label="collection.name"
+        >
+          <header class="collection-divider">
+            <span class="collection-divider-line" aria-hidden="true"></span>
+            <div class="collection-divider-title">
+              <span class="eyebrow">THE HOUSE COLLECTION</span>
+              <h2>{{ collection.name }}</h2>
+              <p>{{ collection.products.length }} {{ collection.products.length === 1 ? 'design' : 'designs' }} in this collection</p>
             </div>
-            <button class="purchase-button" type="button" :disabled="!product.has_download_png || downloadingProductId === product.id" @click="purchaseAndDownload(product)">
-              {{ downloadingProductId === product.id ? 'PREPARING DOWNLOAD…' : product.has_download_png ? 'PURCHASE · DOWNLOAD PNG' : 'DOWNLOAD NOT AVAILABLE' }}
-            </button>
-            <small class="product-download-note">The downloadable PNG is not displayed here. Purchase downloads the original PNG file.</small>
+            <span class="collection-divider-line" aria-hidden="true"></span>
+          </header>
+
+          <div class="product-grid">
+          <article v-for="product in collection.products" :key="product.id" class="product-card">
+            <div class="product-image-frame">
+              <img v-if="selectedImage(product)" class="product-main-image" :src="selectedImage(product)" :alt="`${product.name} preview`" loading="lazy" />
+              <div v-else class="image-placeholder"><span>J.</span><small>PNG DOWNLOAD</small></div>
+              <span class="file-ribbon">PNG DIGITAL FILE</span>
+            </div>
+  
+            <div v-if="imagesFor(product).length > 1" class="product-thumbnails" aria-label="Product preview photos">
+              <button v-for="(image, index) in imagesFor(product)" :key="`${product.id}-${image}`" type="button" :class="{ selected: selectedImage(product) === image }" :aria-label="`Show ${product.name} preview ${index + 1}`" @click="selectImage(product, image)">
+                <img :src="image" :alt="`${product.name} preview ${index + 1}`" loading="lazy" />
+              </button>
+            </div>
+  
+            <div class="product-info">
+              <div class="product-category">{{ product.category }}</div>
+              <h3>{{ product.name }}</h3>
+              <p v-if="product.description">{{ product.description }}</p>
+              <div class="product-card-bottom">
+                <strong>{{ formatPrice(product.price) }}</strong>
+                <span>{{ product.has_download_png ? 'PNG AVAILABLE' : 'COMING SOON' }}</span>
+              </div>
+              <button class="purchase-button" type="button" :disabled="!product.has_download_png || downloadingProductId === product.id" @click="purchaseAndDownload(product)">
+                {{ downloadingProductId === product.id ? 'PREPARING DOWNLOAD…' : product.has_download_png ? 'PURCHASE · DOWNLOAD PNG' : 'DOWNLOAD NOT AVAILABLE' }}
+              </button>
+              <small class="product-download-note">The downloadable PNG is not displayed here. Purchase downloads the original PNG file.</small>
+            </div>
+          </article>
           </div>
-        </article>
+        </section>
       </div>
 
       <p v-if="downloadMessage" class="download-feedback download-success" role="status">{{ downloadMessage }}</p>
@@ -235,6 +274,15 @@ onMounted(loadProducts)
 .shop-note { margin-top: 65px; padding: 50px 20px; text-align: center; background: var(--cream); }
 .shop-note h2 { margin: 15px 0 0; font: 400 40px 'Cormorant Garamond', serif; }
 .shop-note p { max-width: 700px; margin: 15px auto 0; color: var(--muted); font-size: 10px; line-height: 1.8; }
+.collection-list { display: grid; gap: 66px; }
+.collection-section { min-width: 0; }
+.collection-section + .collection-section { padding-top: 52px; border-top: 1px solid var(--line); }
+.collection-divider { display: grid; grid-template-columns: minmax(20px, 1fr) minmax(0, auto) minmax(20px, 1fr); align-items: center; gap: 24px; margin: 0 0 30px; text-align: center; }
+.collection-divider-line { height: 1px; background: linear-gradient(90deg, transparent, var(--antique-gold)); }
+.collection-divider-line:last-child { background: linear-gradient(90deg, var(--antique-gold), transparent); }
+.collection-divider-title { max-width: min(640px, 72vw); }
+.collection-divider-title h2 { margin: 10px 0 8px; font: 400 clamp(30px, 4vw, 48px)/1.1 'Cormorant Garamond', serif; overflow-wrap: anywhere; }
+.collection-divider-title p { margin: 0; color: var(--muted); font-size: 10px; letter-spacing: 1px; }
 @media (max-width: 1000px) { .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 650px) { .shop-hero { padding: 75px 7%; } .shop-collection { padding: 50px 7%; } .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; } .product-grid { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .shop-hero { padding: 75px 7%; } .shop-collection { padding: 50px 7%; } .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; } .product-grid { grid-template-columns: 1fr; } .collection-divider { grid-template-columns: 24px minmax(0, 1fr) 24px; gap: 12px; } .collection-divider-title { max-width: 100%; } .collection-section + .collection-section { padding-top: 36px; } }
 </style>

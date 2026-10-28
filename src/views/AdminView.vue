@@ -2,8 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
-const API_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
 type Admin = {
   id: string | number
@@ -27,6 +26,7 @@ type Announcement = {
     id: string | number
     name: string
     division: 'shop' | 'couture'
+    collection_name: string
     category: string
     description: string
     price: string | number
@@ -191,6 +191,7 @@ const MAX_DOWNLOAD_PNG_BYTES = 15 * 1024 * 1024
 const productForm = ref({
   name: '',
   division: 'shop' as 'shop' | 'couture',
+  collection_name: 'General Collection',
   category: 'Travel Essentials',
   description: '',
   price: 0,
@@ -503,6 +504,7 @@ function resetProductForm() {
   productForm.value = {
     name: '',
     division: 'shop',
+    collection_name: 'General Collection',
     category: 'Travel Essentials',
     description: '',
     price: 0,
@@ -559,6 +561,7 @@ async function saveProduct() {
     const payload = {
       name: productForm.value.name.trim(),
       division: productForm.value.division,
+      collection_name: productForm.value.collection_name.trim() || 'General Collection',
       category: productForm.value.category.trim(),
       description: productForm.value.description.trim(),
       price: Number(productForm.value.price),
@@ -607,6 +610,7 @@ function editProduct(product: Product) {
   productForm.value = {
     name: product.name,
     division: product.division || 'shop',
+    collection_name: product.collection_name || 'General Collection',
     category: product.category,
     description: product.description,
     price: Number(product.price),
@@ -1947,6 +1951,18 @@ onMounted(async () => {
         <option value="couture">JN Couture</option>
       </select>
 
+      <label v-if="productForm.division === 'shop'" for="product-collection-name">Shop Collection Name</label>
+      <input
+        v-if="productForm.division === 'shop'"
+        id="product-collection-name"
+        v-model="productForm.collection_name"
+        maxlength="120"
+        required
+        placeholder="e.g. Princess Balletcore Collection"
+        :disabled="loading"
+      />
+      <p v-if="productForm.division === 'shop'" class="upload-help">Products with exactly the same collection name appear together under one divider on the public Shop page. Example: Princess Balletcore Collection or The Ethereal Voyage Collection.</p>
+
       <label for="product-category">Category</label>
 
       <input
@@ -2149,7 +2165,7 @@ onMounted(async () => {
         </small>
 
         <small>
-          {{ product.category }}
+          {{ product.division === 'shop' ? (product.collection_name || 'General Collection') + ' · ' : '' }}{{ product.category }}
           · PHP {{ Number(product.price).toLocaleString('en-PH', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
